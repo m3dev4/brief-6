@@ -7,7 +7,7 @@ from utils.sessions import save_session
 def login():
     conn = connect_to_db()
     cursor = conn.cursor()
-    query = "SELECT id, name_user, email, password FROM users WHERE email = %s"
+    query = "SELECT id, name_user, email, password, role FROM users WHERE email = %s"
     getRole = "SELECT role FROM users WHERE email = %s"
     email_exist = True
 
@@ -36,13 +36,13 @@ def login():
                 print("Email non trouvé. Veuillez réessayer.")
                 continue
 
-            user_id, name_user, email, stored_password = user
+            user_id, name_user, email, stored_password, role = user
             
             print(user)
 
             stored_password = user[3].encode("utf-8")
             if bcrypt.checkpw(password.encode("utf-8"), stored_password):
-                save_session(user_id, name_user, email)
+                save_session(user_id, name_user, email, role)
                 print("Connexion réussie !")
                 cursor.execute(getRole, (email,))
                 role = cursor.fetchone()[0]

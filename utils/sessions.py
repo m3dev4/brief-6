@@ -4,9 +4,9 @@ import os
 USER_SESSION = "session.json"
 
 
-def save_session(user_id, name_user, email):
+def save_session(user_id, name_user, email, role):
     try:
-        session_data = {"user_id": user_id, "name_user": name_user, "email": email}
+        session_data = {"user_id": user_id, "name_user": name_user, "email": email, "role": role}
         with open(USER_SESSION, "w") as session_file:
             json.dump(session_data, session_file, indent=4)
             print("Session saved successfully.")
