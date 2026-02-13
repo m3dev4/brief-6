@@ -150,274 +150,505 @@ Le code lit/écrit les champs suivants (d’après les requêtes + index utilis�
 
 ---
 
-## 5) Fonctionnalités : détail complet
+## 5) Fonctionnalités (explication détaillée du code)
 
-### 5.1 Démarrage & navigation globale (`main.py`)
-
-#### Fichier : `main.py`
-
-- **Fonction** : `menu()`
-  - appelle `mainAuth()`
-
-- **Bloc** :
-  - `if __name__ == "__main__": menu()`
-
-#### Résultat
-
-Quand tu lances le script, l’utilisateur arrive **directement** sur le menu d’auth.
+Cette section explique **le comportement réel** du programme en suivant le code fichier par fichier.
 
 ---
 
-### 5.2 Menu d’authentification (`modules/auth/mainAuth.py`)
+### 5.1 Point d’entrée : `main.py`
 
-#### Fonction : `mainAuth()`
+#### Rôle du fichier
 
-Affiche :
+`main.py` est le **point de départ** du programme.
 
-- `1` : inscription
-- `2` : connexion
-- `3` : quitter
+#### Décomposition du code
 
-Puis, selon le choix :
+- **Import**
+  - `from modules.auth.mainAuth import mainAuth`
+  - But : récupérer la fonction `mainAuth()` qui gère l’écran principal (inscription/connexion).
 
-- `register()` si `"1"`
-- `login()` si `"2"`
-- `exit()` si `"3"`
-- sinon affiche `Choix invalide...`
+- **Fonction `menu()`**
+  - appelle `mainAuth()` sans paramètre
+  - c’est une simple fonction “wrapper” pour démarrer l’application.
 
-**Remarque importante** : le menu ne reboucle pas sur un mauvais choix (il affiche juste le message).
+- **Bloc `if __name__ == "__main__":`**
+  - garantit que `menu()` est exécutée uniquement si on lance `main.py` directement.
+
+Flux : `main.py` -> `menu()` -> `mainAuth()`.
 
 ---
 
-### 5.3 Inscription (`modules/auth/register/register.py`)
+### 5.2 Connexion à la base de données : `db/connect.py`
 
-#### Fonction : `register()`
+#### Rôle du fichier
 
-##### Étape 1 : Connexion DB
+Centraliser la création d’une connexion MySQL via `mysql.connector`.
 
-- utilise `connect_to_db()`
-- crée un `cursor`
+#### Décomposition du code
 
-##### Étape 2 : Saisie et validation `name_user`
+- **Imports**
+  - `from mysql.connector import connect, Error`
+    - `connect` : permet d’ouvrir une connexion MySQL
+    - `Error` : type d’erreur spécifique MySQL utilisé dans le `except`
+  - `import os` : lire les variables d’environnement
+  - `from dotenv import load_dotenv` : charger le fichier `.env`.
 
-Boucle jusqu’à obtenir un nom valide :
+- **`load_dotenv()`**
+  - charge le fichier `.env` de la racine (si présent) dans les variables d’environnement du processus.
 
-- refuse si :
-  - vide (après `strip`)
-  - longueur `< 3`
-  - composé uniquement de chiffres (`isdigit()`)
-- sinon :
-  - applique `capitalize()`
+- **Lecture des variables**
+  - `db_name = os.getenv("DATABASE_NAME")`
+  - `db_password = os.getenv("SECRET_PASSWORD")`
+  - ces 2 valeurs sont utilisées pour configurer l’accès à MySQL.
 
-##### Étape 3 : Saisie et validation `email`
+- **Fonction `connect_to_db()`**
+  - `try:`
+    - appelle `connect(host="localhost", user="root", password=db_password, database=db_name)`
+    - si `conn.is_connected()` est vrai, affiche “Connexion réussie…”
+    - retourne l’objet connexion `conn`
+  - `except Error as e:`
+    - affiche un message “Erreur lors de la connexion…”
+    - (dans ce cas la fonction ne retourne rien explicitement, donc `None`)
 
-Boucle jusqu’à obtenir un email valide :
 
-- refuse si :
-  - vide
-  - ne contient pas `@`
-  - ne contient pas `.`
-- sinon :
-  - met en minuscules `lower()`
+---
 
-##### Étape 4 : Saisie et validation `password`
+### 5.3 Menu d’accueil (auth) : `modules/auth/mainAuth.py`
 
-Boucle jusqu’à obtenir un mot de passe valide :
+#### Rôle du fichier
 
-- hachage bcrypt :
-  - `salt = bcrypt.gensalt()`
-  - `hashed_password = bcrypt.hashpw(password.encode("utf-8"), salt)`
-- refuse si :
-  - longueur `< 12`
-  - uniquement chiffres (`isdigit()`) ou uniquement lettres (`isalpha()`)
+Afficher le menu initial et router vers :
 
-##### Étape 5 : Insertion DB
+- inscription (`register()`)
+- connexion (`login()`)
+- quitter
 
-Requête :
+#### Décomposition du code
 
-```sql
-INSERT INTO users (name_user, email, password) VALUES (%s, %s, %s)
-```
+- **Imports**
+  - `register` depuis `modules.auth.register.register`
+  - `login` depuis `modules.auth.login.login`
 
-Valeurs :
+- **Fonction `mainAuth()`**
+  - affiche un message de bienvenue.
+  - demande un `choice` avec `input(...)`.
+  - utilise `match choice:`
+    - `case "1"` : affiche “Inscription”, puis appelle `register()`
+    - `case "2"` : affiche “Connexion”, puis appelle `login()`
+    - `case "3"` : affiche “Au revoir !”, puis `exit()` (arrête le programme)
+    - `case _` : affiche “Choix invalide…”
 
-- `name_user`
-- `email`
-- `hashed_password.decode("utf-8")`
+
+
+---
+
+### 5.4 Inscription : `modules/auth/register/register.py`
+
+#### Rôle du fichier
+
+Créer un nouvel utilisateur dans la table `users` et stocker son mot de passe sous forme **hachée** (bcrypt).
+
+#### Décomposition du code
+
+- **Imports**
+  - `connect_to_db` : ouvrir une connexion DB
+  - `bcrypt` : hachage du mot de passe
+  - `login` : appelé à la fin pour enchaîner sur la connexion
+
+- **Fonction `register()`**
+
+##### (A) Connexion DB et préparation de la requête
+
+- `conn = connect_to_db()`
+- `cursor = conn.cursor()`
+  - `cursor` sert à exécuter les requêtes SQL.
+- `query = "INSERT INTO users (name_user, email, password) VALUES (%s, %s, %s)"`
+  - `%s` = placeholders (paramètres) pour éviter de concaténer des chaînes.
+
+##### (B) Saisie `name_user` + validations
+
+- boucle `while True:`
+  - lit `name_user = input(...)`
+  - `if name_user.strip() == ""` : refuse un nom vide (même si l’utilisateur tape des espaces)
+  - `or len(name_user) < 3` : impose au moins 3 caractères
+  - `or name_user.isdigit()` : refuse un nom composé uniquement de chiffres
+  - sinon :
+    - `name_user = name_user.capitalize()`
+    - `break` (sort de la boucle)
+
+##### (C) Saisie `email` + validations
+
+- boucle `while True:`
+  - lit `email = input(...)`
+  - refuse si vide (`strip() == ""`)
+  - refuse si pas de `@` ou pas de `.` (validation simple)
+  - sinon :
+    - `email = email.lower()` (normalisation)
+    - `break`
+
+##### (D) Saisie `password` + règles + hachage
+
+- boucle `while True:`
+  - lit `password = input(...)`
+  - prépare le hash :
+    - `pasword_hash = password.encode("utf-8")`
+    - `salt = bcrypt.gensalt()`
+    - `hashed_password = bcrypt.hashpw(pasword_hash, salt)`
+  - refuse si `len(password) < 12`
+  - refuse si `password.isdigit()` (uniquement chiffres)
+  - refuse si `password.isalpha()` (uniquement lettres)
+  - sinon `break`
+
+
+
+##### (E) Insertion SQL
+
+- `values = (name_user, email, hashed_password.decode("utf-8"))`
+  - on stocke le hash en texte.
+- `cursor.execute(query, values)`
+- `conn.commit()` : rend l’insertion persistante.
+
+##### (F) Enchaînement
+
+- affiche “Inscription réussie…”
+- appelle `login()` pour laisser l’utilisateur se connecter tout de suite.
+
+
+---
+
+### 5.5 Connexion : `modules/auth/login/login.py`
+
+#### Rôle du fichier
+
+Authentifier un utilisateur existant :
+
+- vérifier que l’email existe
+- vérifier le mot de passe (bcrypt)
+- créer une session locale
+- rediriger vers le menu **admin** ou **user**
+
+#### Décomposition du code
+
+- **Imports**
+  - `connect_to_db` : DB
+  - `bcrypt` : comparaison du mot de passe
+  - `adminMenu` / `userMenu` : redirection après login
+  - `save_session` : écrit `session.json`
+
+- **Fonction `login()`**
+
+##### (A) Connexion + requêtes SQL préparées
+
+- `conn = connect_to_db()`
+- `cursor = conn.cursor()`
+- `query = "SELECT id, name_user, email, password, role FROM users WHERE email = %s"`
+- `getRole = "SELECT role FROM users WHERE email = %s"`
+
+
+##### (B) Pré-chargement des emails existants
+
+- `cursor.execute("SELECT email FROM users")`
+- `emails = [email[0] for email in cursor.fetchall()]`
+  - construit une liste Python avec toutes les adresses.
+
+##### (C) Saisie email
+
+- boucle `while True:`
+  - `email = input(...).strip().lower()`
+  - refuse si vide ou sans `@`
+  - refuse si `email not in emails` (email absent en DB)
+  - sinon `break`
+
+##### (D) Saisie mot de passe + vérification
+
+- boucle `while True:`
+  - lit `password = input(...).strip()`
+  - refuse si vide
+  - exécute `cursor.execute(query, (email,))`
+  - `user = cursor.fetchone()`
+    - si `None`, affiche “Email non trouvé…” (normalement déjà filtré par la liste)
+  - unpack : `user_id, name_user, email, stored_password, role = user`
+  - `stored_password = user[3].encode("utf-8")`
+  - compare :
+    - `bcrypt.checkpw(password.encode("utf-8"), stored_password)`
+
+##### (E) Session + redirection
+
+Si le mot de passe est correct :
+
+- `save_session(user_id, name_user, email, role)`
+- affiche “Connexion réussie !”
+- relit le rôle :
+  - `cursor.execute(getRole, (email,))`
+  - `role = cursor.fetchone()[0]`
+- ferme : `cursor.close()` puis `conn.close()`
+- route :
+  - si `role == "admin"` => `adminMenu()`
+  - sinon => `userMenu()`
+
+Si incorrect : message “Mot de passe incorrect…” et boucle.
+
+
+---
+
+### 5.6 Session locale : `utils/sessions.py`
+
+#### Rôle du fichier
+
+Simuler une “session” dans une application console en stockant l’utilisateur courant dans `session.json`.
+
+#### Décomposition du code
+
+- `USER_SESSION = "session.json"`
+  - chemin relatif : le fichier est créé dans la racine où tu exécutes le programme.
+
+##### `save_session(user_id, name_user, email, role)`
+
+- construit :
+  - `session_data = {"user_id": ..., "name_user": ..., "email": ..., "role": ...}`
+- écrit dans le fichier :
+  - `with open(USER_SESSION, "w") as session_file:`
+  - `json.dump(session_data, session_file, indent=4)`
+
+##### `load_session()`
+
+- vérifie l’existence : `os.path.exists(USER_SESSION)`
+- si existe : lit le JSON et le retourne (dict)
+- en cas d’erreur : affiche et retourne `None`
+
+##### `clear_session()`
+
+- supprime `session.json` avec `os.remove` si existant
+- sinon affiche qu’il n’y a pas de session.
+
+---
+
+### 5.7 Menu utilisateur : `modules/menu/user/userMenu.py`
+
+#### Rôle du fichier
+
+Afficher un menu après connexion pour un utilisateur “standard”.
+
+#### Décomposition du code
+
+- **Imports**
+  - `connect_to_db` : pour récupérer le nom de l’utilisateur
+  - `addTicket` : création ticket
+  - `listTickets` : liste des tickets
+  - `load_session` : lire `session.json`
+
+- **Fonction `userMenu()`**
+
+##### (A) Connexion DB + lecture session
+
+- `db = connect_to_db()`
+- `cursor = db.cursor()`
+- `session = load_session()`
+- si `session is None` : affiche un message et `return`
+
+##### (B) Récupération utilisateur DB
+
+- `current_user_id = session.get("user_id")`
+- exécute :
+  - `SELECT id, name_user, email FROM users WHERE id = %s`
+- `result = cursor.fetchone()`
+- `print(result)` (debug)
+- si pas de résultat : affiche “Utilisateur non trouvé.” puis ferme
 
 Puis :
 
-- `conn.commit()`
+- `name_user = result[1]`
+- ferme `cursor` et `db` avant d’afficher le menu.
+
+##### (C) Boucle menu
+
+- affiche :
+  - `1` Créer un ticket
+  - `2` Voir mes tickets
+  - `3` Déconnexion
+- lit `choice = input(...)`
+- `match choice:`
+  - `case "1"`: `addTicket(current_user_id)`
+  - `case "2"`: `listTickets(current_user_id)`
+  - `case "3"`: affiche “Déconnexion réussie !” puis `break`
+  - `_`: affiche “Choix invalide…”
+
+
+---
+
+### 5.8 Création de ticket (user) : `modules/tickets/user/add/addTicket.py`
+
+#### Rôle du fichier
+
+Permettre à un utilisateur connecté de créer une nouvelle ligne dans `tickets`.
+
+#### Décomposition du code
+
+- **Imports**
+  - `connect_to_db` : DB
+  - `datetime` : date de création
+
+- **Fonction `addTicket(user_id)`**
+
+##### (A) Connexion + requête d’insert
+
+- ouvre DB et cursor
+- prépare :
+  - `INSERT INTO tickets (title, description, niveau_urgence, date_urgence, user_id) ...`
+
+##### (B) Validation `title`
+
+- boucle `while True:`
+  - lit `title`
+  - refuse si vide / < 3 / uniquement chiffres
+  - sinon `capitalize()` et `break`
+
+##### (C) Saisie `description`
+
+- lit la description
+- applique `capitalize()`
+- la boucle se termine immédiatement (pas de vraie validation).
+
+##### (D) Choix `niveau_urgence`
+
+- tableau `niveau_urgenceENUM = ["modéré", "élevé", "très élevé", "critique"]`
+- affiche les options avec `enumerate(..., start=1)`
+- demande un numéro
+- vérifie que c’est un chiffre et qu’il est dans la bonne plage
+- convertit le numéro en valeur texte
+
+##### (E) Date
+
+- `date_creation = datetime.now().strftime("%Y-%m-%d %H:%M:%S")`
+- cette valeur est stockée dans la colonne `date_urgence`.
+
+##### (F) Exécution SQL
+
+- `values = (title, description, niveau_urgence, date_creation, user_id)`
+- `cursor.execute(query, values)`
+- `db.commit()`
 - affiche un message de succès
-- appelle directement `login()`
-
-**Point clé** : le `role` n’est pas fourni à l’insertion.
 
 ---
 
-### 5.4 Connexion (`modules/auth/login/login.py`)
+### 5.9 Liste des tickets (user) : `modules/tickets/user/list/listDemand.py`
 
-#### Fonction : `login()`
+#### Rôle du fichier
 
-##### Étape 1 : Connexion DB
+Afficher tous les tickets appartenant à l’utilisateur courant.
 
-- `connect_to_db()`
-- `cursor = conn.cursor()`
+#### Décomposition du code
 
-##### Étape 2 : Récupération de tous les emails
+- **Imports**
+  - `connect_to_db`
 
-- `cursor.execute("SELECT email FROM users")`
-- liste `emails = [email[0] for email in cursor.fetchall()]`
+- **Fonction `listTickets(user_id)`**
+  - ouvre DB + cursor
+  - prépare `query = "SELECT * from tickets WHERE user_id = %s"`
+  - exécute `cursor.execute(query, (user_id,))`
+  - récupère `results = cursor.fetchall()`
 
-##### Étape 3 : Saisie/validation email
+Affichage :
 
-Boucle :
+- si `results is None` : message “Aucun tickets…”
+  - (en pratique `fetchall()` renvoie souvent `[]`, donc ce test peut ne jamais être vrai)
+- affiche ensuite chaque ligne avec des index :
+  - `result[0]` id
+  - `result[1]` titre
+  - `result[2]` description
+  - `result[3]` statut
+  - `result[4]` date
 
-- email normalisé avec `strip().lower()`
-- refuse si vide / pas de `@`
-- refuse si email non présent en base (pas dans `emails`)
-
-##### Étape 4 : Saisie/validation password + vérification bcrypt
-
-- récupère l’utilisateur :
-
-```sql
-SELECT id, name_user, email, password, role FROM users WHERE email = %s
-```
-
-- vérifie le mot de passe :
-  - `bcrypt.checkpw(password.encode("utf-8"), stored_password)`
-
-##### Étape 5 : Session + redirection
-
-Si correct :
-
-- `save_session(user_id, name_user, email, role)`
-- récupère à nouveau le rôle avec :
-
-```sql
-SELECT role FROM users WHERE email = %s
-```
-
-- si rôle `admin` => `adminMenu()`
-- sinon => `userMenu()`
-
-Sinon : message “Mot de passe incorrect”.
-
-**Détail important** : le code affiche `print(user)` (tuple DB), ce qui peut exposer le hash en console.
 
 ---
 
-### 5.5 Gestion de session (`utils/sessions.py`)
+### 5.10 Menu admin : `modules/menu/admin/admin.py`
 
-La session est un **fichier JSON local** : `session.json`.
+#### Rôle du fichier
 
-- **`save_session(user_id, name_user, email, role)`**
-  - écrit `{user_id, name_user, email, role}` dans `session.json`
+Donner à un admin des actions de gestion :
 
-- **`load_session()`**
-  - lit `session.json` si existant et retourne un dict
+- valider des tickets en attente
+- voir tous les tickets
 
-- **`clear_session()`**
-  - supprime `session.json`
+#### Décomposition du code
 
-**Remarque** : les menus “Déconnexion” ne suppriment pas forcément `session.json` (pas d’appel systématique à `clear_session()`).
+- **Imports**
+  - `connect_to_db` (importé mais non utilisé dans ce fichier)
+  - `validate_ticket`
+  - `load_session`
+  - `list_all_tickets`
 
----
+- **Fonction `adminMenu()`**
+  - lit la session
+  - si `None` : affiche un message (mais ne quitte pas immédiatement)
+  - `userAdmin = session.get("role") == "admin"`
+  - `userGetId = session.get("user_id")`
 
-### 5.6 Menu utilisateur (`modules/menu/user/userMenu.py`)
+Si admin :
 
-#### Fonction : `userMenu()`
+- boucle menu :
+  - `1` -> `validate_ticket()`
+  - `2` -> `list_all_tickets(userGetId)`
+  - `3` -> `pass` (non implémenté)
+  - `4` -> `break`
 
-- charge la session (`load_session`)
-- récupère l’utilisateur en base via son `user_id`
-- boucle de menu :
-  - `1` : créer un ticket => `addTicket(current_user_id)`
-  - `2` : voir mes tickets => `listTickets(current_user_id)`
-  - `3` : déconnexion => `break`
-
----
-
-### 5.7 Création de ticket (`modules/tickets/user/add/addTicket.py`)
-
-#### Fonction : `addTicket(user_id)`
-
-- valide `title` (min 3 caractères, pas uniquement chiffres)
-- lit `description` (optionnelle, pas de validation forte)
-- impose un `niveau_urgence` parmi :
-  - `modéré`, `élevé`, `très élevé`, `critique`
-- met une date `datetime.now()` dans `date_urgence`
-- insère le ticket :
-
-```sql
-INSERT INTO tickets (title, description, niveau_urgence, date_urgence, user_id)
-```
+Sinon : affiche “Accès refusé”.
 
 ---
 
-### 5.8 Liste des tickets utilisateur (`modules/tickets/user/list/listDemand.py`)
+### 5.11 Validation / changement de statut (admin) : `modules/tickets/admin/validation/validateTicket.py`
 
-#### Fonction : `listTickets(user_id)`
+#### Rôle du fichier
 
-- récupère les tickets du user :
+Permettre à un admin de traiter les tickets “en-attente” en les passant à :
 
-```sql
-SELECT * from tickets WHERE user_id = %s
-```
+- `en-cours`
+- `résolu`
 
-- affiche chaque ticket avec des index de colonnes (suppose un ordre précis).
+#### Décomposition du code
 
----
+- **Fonction `validate_ticket()`**
+  - ouvre DB + cursor
+  - exécute une requête multi-lignes (join) :
+    - sélectionne des champs ticket + infos user
+    - filtre uniquement les tickets dont `statut = 'en-attente'`
+  - `results = cursor.fetchall()`
+  - si vide : message + fermeture + `return`
+  - affiche chaque ticket (tuple complet)
 
-### 5.9 Menu admin (`modules/menu/admin/admin.py`)
+Ensuite :
 
-#### Fonction : `adminMenu()`
-
-- lit la session, vérifie `role == "admin"`
-- menu :
-  - `1` : valider un ticket => `validate_ticket()`
-  - `2` : afficher tous les tickets => `list_all_tickets(userGetId)`
-  - `3` : afficher les utilisateurs => **non implémenté** (`pass`)
-  - `4` : déconnexion => `break`
-
----
-
-### 5.10 Validation / traitement tickets (admin) (`modules/tickets/admin/validation/validateTicket.py`)
-
-#### Fonction : `validate_ticket()`
-
-- liste les tickets en attente :
-  - jointure `tickets` + `users`
-  - filtre : `t.statut = 'en-attente'`
-- demande l’id du ticket à mettre à jour
-- propose le nouveau statut :
-  - `en-cours`
-  - `résolu`
-- applique l’update :
-
-```sql
-UPDATE tickets SET statut = %s WHERE id = %s
-```
+- demande `update_ticket` (id ticket)
+- propose un choix :
+  - `1` => `en-cours`
+  - `2` => `résolu`
+- applique :
+  - `UPDATE tickets SET statut = %s WHERE id = %s`
+- `db.commit()`
+- fermeture cursor + db
 
 ---
 
-### 5.11 Liste de tous les tickets (admin) (`modules/tickets/admin/listAllTickets/allTickets.py`)
+### 5.12 Liste de tous les tickets (admin) : `modules/tickets/admin/listAllTickets/allTickets.py`
 
-#### Fonction : `list_all_tickets(user_id)`
+#### Rôle du fichier
 
-- re-vérifie le rôle admin via DB :
+Afficher l’ensemble des tickets, uniquement si l’utilisateur passé en paramètre est admin.
 
-```sql
-SELECT role FROM users WHERE id = %s
-```
+#### Décomposition du code
 
-- si admin :
+- **Fonction `list_all_tickets(user_id)`**
+  - ouvre DB + cursor
+  - vérifie le rôle dans la DB :
+    - `SELECT role FROM users WHERE id = %s`
+  - si admin :
+    - `SELECT * FROM tickets`
+    - boucle d’affichage
+  - sinon : “Accès refusé…” et `return`
+  - ferme cursor + db
 
-```sql
-SELECT * FROM tickets
-```
-
-- affiche tous les tickets.
 
 ---
 

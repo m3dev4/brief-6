@@ -37,8 +37,6 @@ def login():
                 continue
 
             user_id, name_user, email, stored_password, role = user
-            
-            print(user)
 
             stored_password = user[3].encode("utf-8")
             if bcrypt.checkpw(password.encode("utf-8"), stored_password):

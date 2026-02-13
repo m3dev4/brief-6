@@ -10,7 +10,7 @@ def register():
 
     while True:
         name_user = input("Entrer votre prenom et nom : ")
-        if name_user.strip() == "" or len(name_user) < 3 or name_user.isdigit():
+        if name_user() == "" or len(name_user) < 3 or name_user.isdigit():
             print(
                 "Le nom d'utilisateur doit contenir au moins 3 caractères et ne pas être vide ou composé uniquement de chiffres. Veuillez réessayer."
             )
