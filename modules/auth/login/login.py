@@ -1,6 +1,6 @@
 from db.connect import connect_to_db
 import bcrypt
-from modules.menu.admin.admin import admin
+from modules.menu.admin.admin import adminMenu
 from modules.menu.user.userMenu import userMenu
 from utils.sessions import save_session
 
@@ -48,8 +48,8 @@ def login():
                 role = cursor.fetchone()[0]
                 cursor.close()
                 conn.close()
-                if role == "ADMIN":
-                    admin()
+                if role == "admin":
+                    adminMenu()
                 else:
                     userMenu()
                 break

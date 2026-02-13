@@ -1,5 +1,6 @@
 from db.connect import connect_to_db
 from modules.tickets.user.add.addTicket import addTicket
+from modules.tickets.user.list.listDemand import listTickets
 from utils.sessions import load_session
 
 USER_SESSION = "session.json"
@@ -15,7 +16,6 @@ def userMenu():
         return
     
     current_user_id = session.get("user_id")
-    print(current_user_id)
     try:
         query = "SELECT id, name_user, email FROM users WHERE id = %s"
         cursor.execute(query, (current_user_id,))
@@ -47,8 +47,7 @@ def userMenu():
             case "1":
                 addTicket(current_user_id)
             case "2":
-                print("Voir mes tickets")
-                # viewMyTickets(current_user_email)
+                listTickets(current_user_id)
             case "3":
                 print("Déconnexion réussie !")
                 break
