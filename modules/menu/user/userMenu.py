@@ -1,28 +1,56 @@
 from db.connect import connect_to_db
+from modules.tickets.user.add.addTicket import addTicket
+from utils.sessions import load_session
+
+USER_SESSION = "session.json"
 
 def userMenu():
-    current_user = None
-    conn = connect_to_db()
-    cursor = conn.cursor()
-    query = "SELECT name_user FROM users WHERE email = %s"
-    cursor.execute(query, (current_user,))
-    name_user = cursor.fetchone()[0]
-    print(f"Bienvenue, {name_user} ! Que voulez-vous faire ?")
-    print("######################################################")
-    print("1. Creer un ticket")
-    print("2. Voir mes tickets")
-    print("3. Deconnexion")
+    db = connect_to_db()
+    cursor = db.cursor()
     
-    choice = input("Tapez le numéro de votre choix : ")
-    match choice:
-        case "1":
-            print("Création de ticket")
-            # Appeler la fonction de création de ticket ici
-        case "2":
-            print("Voir mes tickets")
-            # Appeler la fonction pour voir les tickets ici
-        case "3":
-            print("Déconnexion")
-            # Appeler la fonction pour modifier le profil ici
-        case _:
-            print("Choix invalide. Veuillez réessayer.")
+    session = load_session()
+    
+    if session is None:
+        print("Aucune session active. Veuillez vous connecter.")
+        return
+    
+    current_user_id = session.get("user_id")
+    print(current_user_id)
+    try:
+        query = "SELECT id, name_user, email FROM users WHERE id = %s"
+        cursor.execute(query, (current_user_id,))
+        result = cursor.fetchone()
+    except Exception as e:
+        print(e)
+    
+    print(result)    
+    if not result:
+        print("Utilisateur non trouvé.")
+        cursor.close()
+        db.close()
+    
+    name_user = result[1]
+    cursor.close()
+    db.close()
+    
+
+    while True:
+        print(f"\nBienvenue, {name_user} ! Que voulez-vous faire ?")
+        print("######################################################")
+        print("1. Créer un ticket")
+        print("2. Voir mes tickets")
+        print("3. Déconnexion")
+
+        choice = input("Tapez le numéro de votre choix : ")
+
+        match choice:
+            case "1":
+                addTicket(current_user_id)
+            case "2":
+                print("Voir mes tickets")
+                # viewMyTickets(current_user_email)
+            case "3":
+                print("Déconnexion réussie !")
+                break
+            case _:
+                print("Choix invalide. Veuillez réessayer.")
